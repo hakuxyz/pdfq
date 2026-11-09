@@ -6,6 +6,7 @@ description = "Fast, parallel PDF search with a pdfgrep-compatible CLI"
 license = "MIT"
 repository = "https://github.com/hakuxyz/pdfq"
 readme = "README.md"
+exclude = ["PROMO.md"]
 keywords = ["pdf", "search", "grep", "cli"]
 categories = ["command-line-utilities", "text-processing"]
 rust-version = "1.88"

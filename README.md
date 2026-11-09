@@ -1,7 +1,7 @@
 # pdfq
 
 [![Crates.io](https://img.shields.io/crates/v/pdfq.svg)](https://crates.io/crates/pdfq)
-[![docs.rs](https://docs.rs/crate/pdfq/badge.svg)](https://docs.rs/crate/pdfq)
+[![docs.rs](https://docs.rs/pdfq/badge.svg)](https://docs.rs/pdfq)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Fast, parallel PDF search with a command line compatible with
