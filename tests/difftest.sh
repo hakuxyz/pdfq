@@ -93,9 +93,17 @@ run "-L none"             --color=never -L -e zzzz t.pdf twopage.pdf
 run "-q match"            --color=never -q -e foo t.pdf
 run "-q nomatch"          --color=never -q -e zzzz t.pdf
 
-# max-count
+# max-count (counts match occurrences, not lines)
 run "-m 1"                -n --color=never -m 1 -e foo t.pdf twopage.pdf
 run "-m 2"                -n --color=never -m 2 -e foo t.pdf twopage.pdf
+run "-m 1 multicount"     -n --color=never -m 1 -e foo multicount.pdf
+run "-m 2 multicount"     -n --color=never -m 2 -e foo multicount.pdf
+run "-m 3 multicount"     -n --color=never -m 3 -e foo multicount.pdf
+run "-m 1 multiline"      -n --color=never -m 1 -e foo multiline.pdf
+run "-m 3 multiline"      -n --color=never -m 3 -e foo multiline.pdf
+run "-m 4 multiline"      -n --color=never -m 4 -e foo multiline.pdf
+run "-c -m 2 multiline"   --color=never -c -m 2 -e foo multiline.pdf
+run "-c multicount"       --color=never -c -e foo multicount.pdf
 
 # context
 run "-A1"                 -n --color=never -A1 -e two t.pdf

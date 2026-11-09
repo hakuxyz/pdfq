@@ -288,3 +288,103 @@ fn flush(
     std::mem::swap(current, last_line);
     current.clear();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::{OnlyFilenames, OutConf, PagenumType, Recursion};
+    use crate::engine::RegexEngineImpl;
+    use crate::pagerange::PageRange;
+    use crate::pdf::{LoadedDoc, PageText};
+    use std::sync::Arc;
+
+    fn cfg(pattern: &str, max_count: usize, count: bool, pagenum: bool) -> Config {
+        Config {
+            recursion: Recursion::None,
+            count,
+            pagecount: false,
+            quiet: false,
+            passwords: vec![String::new()],
+            max_count,
+            debug: false,
+            warn_empty: false,
+            use_cache: false,
+            out: OutConf {
+                filename: false,
+                pagenum,
+                pagenum_type: PagenumType::Index,
+                ..OutConf::default()
+            },
+            excludes: Vec::new(),
+            includes: Vec::new(),
+            page_range: PageRange::default(),
+            only_filenames: OnlyFilenames::No,
+            files: Vec::new(),
+            engine: Arc::new(RegexEngineImpl::new(pattern, false).unwrap()),
+        }
+    }
+
+    fn doc(lines: &[&str]) -> LoadedDoc {
+        LoadedDoc::from_pages(vec![PageText {
+            text: lines.join("\n"),
+            label: "1".into(),
+        }])
+    }
+
+    #[test]
+    fn max_count_counts_matches_not_lines() {
+        // One line with three matches consumes the whole budget of 3.
+        let d = doc(&["foo foo foo", "foo bar", "baz foo"]);
+        let out = search_document(&cfg("foo", 3, false, true), &d, "x.pdf", &cfg("foo", 3, false, true).engine);
+        assert_eq!(out.stdout, "1:foo foo foo\n");
+        assert_eq!(out.matches, 3);
+    }
+
+    #[test]
+    fn max_count_spans_lines_by_occurrence() {
+        // 3 matches on line 1 + 1 on line 2 = budget 4; line 3 not reached.
+        let d = doc(&["foo foo foo", "foo bar", "baz foo"]);
+        let c = cfg("foo", 4, false, true);
+        let out = search_document(&c, &d, "x.pdf", &c.engine);
+        assert_eq!(out.stdout, "1:foo foo foo\n1:foo bar\n");
+        assert_eq!(out.matches, 4);
+    }
+
+    #[test]
+    fn max_count_stops_mid_line_budget() {
+        // Budget 2 is fully consumed on the first line (2 of 3 matches there).
+        let d = doc(&["foo foo foo", "foo bar"]);
+        let c = cfg("foo", 2, false, true);
+        let out = search_document(&c, &d, "x.pdf", &c.engine);
+        assert_eq!(out.stdout, "1:foo foo foo\n");
+        assert_eq!(out.matches, 2);
+    }
+
+    #[test]
+    fn max_count_caps_count_mode() {
+        let d = doc(&["foo foo foo", "foo bar", "baz foo"]);
+        let c = cfg("foo", 3, true, false);
+        let out = search_document(&c, &d, "x.pdf", &c.engine);
+        assert_eq!(out.stdout, "3\n");
+        assert_eq!(out.matches, 3);
+    }
+
+    #[test]
+    fn count_without_max_counts_every_match() {
+        let d = doc(&["foo foo foo", "foo bar", "baz foo"]);
+        let c = cfg("foo", 0, true, false);
+        let out = search_document(&c, &d, "x.pdf", &c.engine);
+        assert_eq!(out.stdout, "5\n");
+        assert_eq!(out.matches, 5);
+    }
+
+    #[test]
+    fn max_count_one_match_per_match_occurrence_on_multi_match_line() {
+        // Mirrors pdfgrep testsuite: "foofoo" alone with -m 1 prints that line.
+        let d = doc(&["foofoo", "foo"]);
+        let c = cfg("foo", 1, false, true);
+        let out = search_document(&c, &d, "x.pdf", &c.engine);
+        assert_eq!(out.stdout, "1:foofoo\n");
+        assert_eq!(out.matches, 1);
+    }
+}

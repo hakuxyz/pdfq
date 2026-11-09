@@ -210,7 +210,7 @@ pub fn build_cli() -> Command {
                 .long("max-count")
                 .value_name("NUM")
                 .value_parser(parse_max_count)
-                .help("Stop reading after NUM matching lines (per file)"),
+                .help("Stop reading after NUM matches (per file)"),
         )
         .arg(
             Arg::new("debug")
