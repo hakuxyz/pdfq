@@ -30,6 +30,10 @@ impl LoadedDoc {
         self.pages.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.pages.is_empty()
+    }
+
     pub fn page(&self, idx: usize) -> Option<&PageText> {
         self.pages.get(idx)
     }

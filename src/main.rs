@@ -1,23 +1,15 @@
 //! pdfq: fast, parallel PDF search compatible with pdfgrep's CLI.
 
-mod cache;
-mod cli;
-mod engine;
-mod output;
-mod pagerange;
-mod pdf;
-mod search;
-mod walk;
-
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use rayon::prelude::*;
 
-use cli::{Config, Recursion, EXIT_ERROR, EXIT_NO_MATCH, EXIT_OK};
-use pdf::{PdfError, SharedDoc};
-use search::FileOutcome;
-use walk::{WalkError, Walker};
+use pdfq::cache;
+use pdfq::cli::{self, Config, Recursion, EXIT_ERROR, EXIT_NO_MATCH, EXIT_OK};
+use pdfq::pdf::{self, PdfError, SharedDoc};
+use pdfq::search::{self, FileOutcome};
+use pdfq::walk::{WalkError, Walker};
 
 fn main() {
     let cmd = cli::build_cli();

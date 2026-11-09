@@ -1,6 +1,6 @@
 [package]
 name = "pdfq"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Fast, parallel PDF search with a pdfgrep-compatible CLI"
 license = "MIT"
