@@ -1,8 +1,4 @@
-//! Output formatting: line prefixes, match highlighting, context lines.
-//!
-//! Ported from pdfgrep's output.cc. Byte offsets into the page text are used
-//! throughout; all indices are guaranteed to sit on char boundaries because
-//! the regex engines only return valid UTF-8 spans.
+//! Output: prefixes, match highlighting, context lines (from pdfgrep).
 
 use crate::cli::{OutConf, PagenumType};
 
@@ -55,8 +51,7 @@ impl Writer {
         }
     }
 
-    /// `filename<sep>[pagenum<sep>]` where sep is `:` normally, `-` for
-    /// context lines, or NUL after the filename with `-Z`.
+    /// `filename<sep>[pagenum<sep>]`; sep is `:`, `-` (context), or NUL (-Z).
     pub fn prefix(&mut self, ctx: PrefixCtx<'_>, in_context: bool) {
         let sep_owned;
         let sep: &str = if in_context {
@@ -123,8 +118,7 @@ impl Writer {
         }
     }
 
-    /// Print one text line containing all matches of that line, highlighting
-    /// each match. `matches` must be non-empty, sorted, on the same line.
+    /// Print the line containing `matches` (non-empty, sorted, same line).
     pub fn line_matches(&mut self, ctx: PrefixCtx<'_>, text: &str, matches: &[MatchSpan]) {
         let first = matches[0];
         let last = matches[matches.len() - 1];
@@ -262,10 +256,7 @@ impl Writer {
         }
     }
 
-    /// Between two match groups: after-context of m1, optional `--` separator,
-    /// before-context of m2. Mirrors pdfgrep's print_context_between: the
-    /// counting loops advance pos_right/pos_left, and `--` is printed only
-    /// when lines still remain unprinted between the two blocks.
+    /// Between groups: after of m1, `--` only if lines remain, then before of m2.
     pub fn context_between(
         &mut self,
         ctx: PrefixCtx<'_>,
@@ -313,8 +304,7 @@ impl Writer {
         }
 
         self.ctx_after_lines(ctx, m1, text, lines_right);
-        // pdfgrep compares the mutated positions (npos semantics: None on the
-        // left still separates, None on the right does not).
+        // Mutated positions; None on the left still separates (npos).
         let sep = match (pos_left, pos_right) {
             (Some(pl), Some(pr)) => pl > pr,
             (None, Some(_)) => true,
@@ -404,7 +394,7 @@ mod tests {
         c.null_byte_sep = true;
         let mut w = Writer::new(c);
         w.line_matches(ctx(), "abc", &[MatchSpan { start: 0, end: 3 }]);
-        assert_eq!(w.take(), "f.pdf\01:abc\n");
+        assert_eq!(w.take(), "f.pdf\u{0}1:abc\n");
     }
 
     #[test]

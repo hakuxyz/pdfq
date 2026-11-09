@@ -1,9 +1,4 @@
-//! Recursive directory traversal with include/exclude globs.
-//!
-//! Entries are sorted per directory so output order is deterministic (pdfgrep
-//! uses raw readdir order, which makes tests flaky). Symlink rules follow
-//! pdfgrep: `-r` skips every symlink entry, `-R` follows them; visited
-//! (dev, ino) pairs break symlink cycles.
+//! Directory walk with globs; sorted for determinism; -r skips symlinks, -R follows.
 
 use std::collections::HashSet;
 use std::fs;
@@ -27,8 +22,7 @@ pub struct Walker {
     apply_filters: bool,
 }
 
-/// fnmatch(FNM_PERIOD) approximation: a leading dot in the name requires a
-/// leading dot in the pattern.
+/// fnmatch(FNM_PERIOD): a leading dot in the name needs a dot in the pattern.
 fn leading_dot_ok(pattern: &str, name: &str) -> bool {
     !(name.starts_with('.') && !pattern.starts_with('.'))
 }
@@ -43,8 +37,7 @@ impl Walker {
         let compile = |p: &str| -> GlobMatcher {
             Glob::new(p)
                 .map(|g| g.compile_matcher())
-                // An invalid glob simply never matches; pdfgrep's fnmatch
-                // would too (fnmatch returns error -> treated as no match).
+                // Invalid glob never matches (like a failed fnmatch).
                 .unwrap_or_else(|_| Glob::new("*__never__").unwrap().compile_matcher())
         };
         Self {
@@ -70,9 +63,7 @@ impl Walker {
         })
     }
 
-    /// Expand one command-line argument into concrete PDF files to search.
-    /// Non-recursive mode passes files through unchanged (errors surface at
-    /// open time, matching pdfgrep).
+    /// Expand one CLI arg to PDF files; non-dir args pass through unchanged.
     pub fn expand_arg(&self, arg: &str, out: &mut Vec<String>, errors: &mut Vec<WalkError>) {
         let path = Path::new(arg);
         let is_dir = path.is_dir(); // follows symlinks, like pdfgrep's stat()
@@ -150,14 +141,11 @@ impl Walker {
 
             let ft = meta.file_type();
             if ft.is_symlink() {
-                // -r: skip symlinks entirely (pdfgrep checks S_ISLNK after
-                // lstat). -R: symlinks were stat'ed above, so they appear
-                // as regular files or directories here.
+                // -r skips symlinks; -R already resolved them via stat.
                 if self.recursion != Recursion::FollowSymlinks {
                     continue;
                 }
-                // stat() on a broken symlink fails and landed in Err above;
-                // reaching here means a valid target.
+                // Broken symlink targets already failed in the Err arm above.
                 if meta.is_dir() {
                     self.walk_dir(&display, out, errors, visited);
                 } else if self.accepts(&name) {

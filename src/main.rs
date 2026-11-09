@@ -31,13 +31,11 @@ fn main() {
 
     let cfg = cli::build_config(&matches);
 
-    // ---- collect inputs ------------------------------------------------
+    // collect input files
     let mut files: Vec<String> = Vec::new();
     let mut walk_errors: Vec<WalkError> = Vec::new();
 
-    // Include/exclude filters apply only to files found by directory
-    // traversal; expand_arg passes explicitly named files through untouched
-    // (pdfgrep passes check_excludes=false for the argument list).
+    // Filters apply only during -r expansion, not to explicit CLI files.
     let walker = Walker::new(&cfg.includes, &cfg.excludes, cfg.recursion, true);
 
     let args = cfg.files.clone();
@@ -49,8 +47,7 @@ fn main() {
         }
     }
 
-    // Walk errors: pdfgrep only feeds top-level failures into the exit
-    // status; problems deeper in the tree are reported and ignored.
+    // Only top-level walk errors affect the exit status (like pdfgrep).
     let mut fatal = false;
     for e in &walk_errors {
         cli::eprint(&format!("{}: {}", e.path, e.reason));
@@ -61,9 +58,7 @@ fn main() {
         }
     }
 
-    // ---- search in parallel --------------------------------------------
-    // Results are printed in input order, chunk by chunk, so output stays
-    // deterministic while CPU-bound extraction runs on all cores.
+    // Parallel search; results printed in input order for determinism.
     let any_found = AtomicBool::new(false);
     let mut had_open_error = false;
     let chunk = std::thread::available_parallelism()
@@ -102,8 +97,7 @@ fn main() {
     }
     let _ = out.flush();
 
-    // ---- exit status ---------------------------------------------------
-    // -q: a match wins over any error, like pdfgrep.
+    // -q: a match wins over errors, like pdfgrep.
     if cfg.quiet && any_found.load(Ordering::Relaxed) {
         std::process::exit(EXIT_OK);
     }
@@ -143,10 +137,21 @@ fn process_file(cfg: &Config, path: &str) -> Processed {
         Err(_) => return fail(format!("Could not open {path}")),
     };
 
-    // ---- optional cache -------------------------------------------------
+    // Open+decrypt first so cache hits cannot bypass the password check.
+    let opened = match pdf::open(&bytes, path, &cfg.passwords) {
+        Ok(d) => d,
+        Err(PdfError::Open { path, reason: _ }) => {
+            return fail(format!("Could not open {path}"))
+        }
+        Err(PdfError::Encrypted { path }) => return fail(format!("Could not open {path}")),
+    };
+    // was_encrypted stays true after a password load clears the Encrypt trailer entry.
+    let encrypted = opened.was_encrypted();
+
+    // Cache only unencrypted docs; never persist decrypted page text.
     let mut cached: Option<Vec<pdf::PageText>> = None;
     let mut store_cache: Option<cache::Cache> = None;
-    if cfg.use_cache {
+    if cfg.use_cache && !encrypted {
         if let Some(c) = cache::Cache::open(&bytes) {
             cached = c.load();
             if cached.is_none() {
@@ -159,18 +164,10 @@ fn process_file(cfg: &Config, path: &str) -> Processed {
 
     let doc: SharedDoc = match cached {
         Some(pages) => pdf::LoadedDoc::from_pages(pages).into(),
-        None => match pdf::load(&bytes, path, &cfg.passwords) {
-            Ok(d) => d.into(),
-            Err(PdfError::Open { path, reason: _ }) => {
-                return fail(format!("Could not open {path}"))
-            }
-            Err(PdfError::Encrypted { path }) => return fail(format!("Could not open {path}")),
-        },
+        None => pdf::extract(&opened).into(),
     };
 
-    // Docs with failed page extraction are not cached so the
-    // "Could not search in page ..." messages reappear on later runs
-    // (pdfgrep only caches pages it could extract).
+    // Skip cache when a page failed to extract so the error can reappear.
     if let Some(c) = store_cache
         && doc.failed_pages().is_empty()
     {

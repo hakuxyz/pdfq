@@ -1,8 +1,4 @@
-//! Optional on-disk cache for extracted page text (`--cache`).
-//!
-//! Keyed by SHA-256 of the raw file bytes so any change to the PDF
-//! invalidates the entry. Format is a tiny hand-rolled binary layout; no
-//! serde needed for four length-prefixed fields per page.
+//! On-disk page-text cache (`--cache`), keyed by SHA-256 of the file bytes.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,12 +32,12 @@ fn cache_dir() -> Option<PathBuf> {
 }
 
 impl Cache {
-    /// Returns None when the cache directory cannot be created; the caller
-    /// then just runs without caching (pdfgrep warns, we stay quiet unless
-    /// --debug was requested by the caller printing our None reason).
+    /// None if the cache dir cannot be created; caller runs without caching.
     pub fn open(bytes: &[u8]) -> Option<Self> {
         let dir = cache_dir()?;
         fs::create_dir_all(&dir).ok()?;
+        // Owner-only directory: extracted page text may be sensitive.
+        tighten_dir(&dir);
         let mut hasher = Sha256::new();
         hasher.update(bytes);
         let key = hex(&hasher.finalize());
@@ -53,17 +49,86 @@ impl Cache {
     }
 
     pub fn load(&self) -> Option<Vec<PageText>> {
-        let data = fs::read(self.path()).ok()?;
+        let path = self.path();
+        // Reject world/group-readable entries left by an older build.
+        if !is_owner_only(&path) {
+            return None;
+        }
+        let data = fs::read(path).ok()?;
         decode(&data)
     }
 
     pub fn store(&self, pages: &[PageText]) {
         let data = encode(pages);
         let tmp = self.dir.join(format!("{}.tmp", self.key));
-        if fs::write(&tmp, &data).is_ok() {
+        if write_private(&tmp, &data).is_ok() {
             let _ = fs::rename(&tmp, self.path());
+            let _ = tighten_file(&self.path());
             prune(&self.dir);
         }
+    }
+}
+
+/// Create `path` with mode 0600 (owner read/write only).
+#[cfg(unix)]
+fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    f.write_all(data)
+}
+
+#[cfg(not(unix))]
+fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    fs::write(path, data)
+}
+
+/// Force an existing file to mode 0600; no-op on non-Unix.
+fn tighten_file(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+/// Force an existing directory to mode 0700; no-op on non-Unix.
+fn tighten_dir(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+}
+
+/// True when the file exists and is readable by owner only (0600/0400/0700…).
+fn is_owner_only(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        match fs::metadata(path) {
+            Ok(md) => md.permissions().mode() & 0o077 == 0,
+            Err(_) => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        path.exists()
     }
 }
 
@@ -171,10 +236,7 @@ mod tests {
 
     #[test]
     fn io_error_is_not_fatal() {
-        // Point the cache dir at a path that cannot be created; open must
-        // return None instead of panicking. set_var is unsafe in edition 2024
-        // because it races with concurrent getenv - accepted here since no
-        // other test touches PDFQ_CACHE_DIR at the same time.
+        // Uncreatable cache dir must yield None, not a panic.
         unsafe {
             std::env::set_var("PDFQ_CACHE_DIR", "/dev/null/x");
         }

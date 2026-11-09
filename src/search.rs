@@ -1,9 +1,4 @@
-//! Per-document search: page loop, match grouping, mode dispatch.
-//!
-//! Ported from pdfgrep's search.cc. Three modes:
-//!   * Lines     - normal output, matches grouped per text line
-//!   * CountOnly - only per-page and total counters (-c / -p)
-//!   * Presence  - stop at first match (-q / -l / -L)
+//! Per-document search: Lines / CountOnly (-c,-p) / Presence (-q,-l,-L).
 
 use crate::cli::{Config, OnlyFilenames};
 use crate::engine::SharedEngine;

@@ -83,15 +83,23 @@ but do not change the exit code, matching pdfgrep.
 
 ## Testing
 
-Unit tests:
+Unit and integration tests (includes a regression suite for the
+encrypted-PDF password check vs `--cache`):
 
 ```sh
 cargo test
 ```
 
-The development workflow also included a differential test suite that runs
-pdfq and a reference pdfgrep 2.2.0 binary side by side on the same inputs
-and compares stdout, stderr, and exit codes.
+Differential tests against a reference pdfgrep binary (compares stdout,
+stderr, and exit codes; program name normalized):
+
+```sh
+cargo build --release
+PDFGREP=/path/to/pdfgrep bash tests/difftest.sh
+```
+
+If `PDFGREP` is not set, the script uses `pdfgrep` from `PATH` and exits 2
+when it is missing.
 
 ## License
 

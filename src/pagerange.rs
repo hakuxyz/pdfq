@@ -1,8 +1,4 @@
-//! `--page-range` interval list.
-//!
-//! Format: comma-separated list of `N` or `N-M`, 1-based inclusive. An empty
-//! container means "every page", matching pdfgrep. An inverted range such as
-//! `2-1` yields a warning and matches nothing.
+//! `--page-range`: `N` or `N-M` lists; empty means all pages; `2-1` = none.
 
 use std::fmt;
 
@@ -31,10 +27,7 @@ pub struct PageRange {
 }
 
 impl PageRange {
-    /// Parse the `--page-range` value. Empty intervals after parsing still
-    /// yield a container that matches everything only when the input itself
-    /// was never provided (Default); a provided-but-empty input like `2-1`
-    /// produces intervals that match nothing.
+    /// Parse range; Default matches all, a provided-but-empty range matches none.
     pub fn parse(input: &str) -> Result<Self, PageRangeError> {
         let mut intervals = Vec::new();
         for part in input.split(',') {

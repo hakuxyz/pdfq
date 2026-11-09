@@ -1,18 +1,8 @@
-//! Regex engines behind a common interface.
-//!
-//! pdfgrep tries each pattern in order from a given offset and takes the
-//! first pattern that matches anywhere at or after that offset. That is
-//! deliberately different from "earliest match across all patterns", so
-//! PatternList reproduces it exactly.
+//! Regex engines. PatternList tries patterns in order, not earliest-match.
 
 use std::sync::Arc;
 
-/// A compiled pattern able to find its leftmost match at or after `offset`.
-///
-/// `offset` is an absolute byte index into `text`. Anchors (`^`, `$`) are
-/// evaluated against the whole page text, never against the subslice, which
-/// matches POSIX `REG_NOTBOL` semantics used by pdfgrep: `^` only matches at
-/// the start of a page.
+/// Leftmost match at or after `offset`; `^`/`$` see the whole page (REG_NOTBOL).
 pub trait RegexEngine: Send + Sync {
     /// First match starting at or after `offset`, or `None`.
     fn find_at(&self, text: &str, offset: usize) -> Option<(usize, usize)>;
@@ -20,8 +10,7 @@ pub trait RegexEngine: Send + Sync {
 
 pub type SharedEngine = Arc<dyn RegexEngine>;
 
-/// Default engine: leftmost-first match via the `regex` crate (Rust syntax,
-/// unicode aware, `.` does not match `\n`, same as GNU grep).
+/// Default engine: `regex` crate (leftmost-first, `.` skips `\n`).
 pub struct RegexEngineImpl {
     re: regex::Regex,
 }
@@ -42,8 +31,7 @@ impl RegexEngine for RegexEngineImpl {
     }
 }
 
-/// PCRE-style engine for `-P`. fancy-regex adds look-around and backreferences
-/// on top of the regex crate.
+/// `-P` engine: fancy-regex (look-around, backreferences).
 pub struct PcreEngine {
     re: fancy_regex::Regex,
 }
@@ -62,18 +50,13 @@ impl RegexEngine for PcreEngine {
     fn find_at(&self, text: &str, offset: usize) -> Option<(usize, usize)> {
         match self.re.find_from_pos(text, offset) {
             Ok(Some(m)) => Some((m.start(), m.end())),
-            // Backtrack limit or runtime error: treat as no match, same as a
-            // PCRE match-limit failure ending the scan at this position.
+            // Backtrack/runtime error: treat as no match (like PCRE match-limit).
             Ok(None) | Err(_) => None,
         }
     }
 }
 
-/// Fixed-string engine for `-F`.
-///
-/// One `-F` pattern may contain several needles separated by newlines; the
-/// leftmost occurrence among all needles wins. Ties go to the needle listed
-/// first, which mirrors pdfgrep's min-result scan.
+/// `-F` engine; newline-separated needles, leftmost then first-listed wins.
 pub struct FixedEngine {
     re: regex::Regex,
 }
@@ -95,9 +78,7 @@ impl FixedEngine {
     }
 }
 
-/// Split like C `getline` over the pattern: newline-separated, a trailing
-/// newline does not produce an extra empty needle, and the empty pattern is a
-/// single empty needle (matches everywhere).
+/// Split like C getline: newlines separate, trailing newline dropped.
 fn split_fixed_needles(pattern: &str) -> Vec<&str> {
     let mut needles: Vec<&str> = pattern.split('\n').collect();
     if pattern.ends_with('\n') {
@@ -115,8 +96,7 @@ impl RegexEngine for FixedEngine {
     }
 }
 
-/// Engine that never matches. Used when `-e`/`-f` were given but produced an
-/// empty pattern list (documented as "matches nothing").
+/// Never matches; used for an empty `-e`/`-f` pattern list.
 pub struct NeverEngine;
 
 impl RegexEngine for NeverEngine {
@@ -125,9 +105,7 @@ impl RegexEngine for NeverEngine {
     }
 }
 
-/// Tries each pattern in declaration order from the same offset and returns
-/// the first hit. Not "earliest across patterns": if pattern A matches at
-/// position 50 and pattern B at position 10, A wins when it is first.
+/// First pattern that matches from the offset wins, not the earliest span.
 pub struct PatternList {
     engines: Vec<SharedEngine>,
 }
@@ -181,8 +159,7 @@ mod tests {
     #[test]
     fn dollar_matches_page_end_only() {
         let re = RegexEngineImpl::new("foo$", false).unwrap();
-        // "$" is end of the whole page text, not end of line: only the
-        // trailing "foo" matches (offsets 15..18 of the 18-byte haystack).
+        // $ is end of page text, not end of line.
         assert_eq!(re.find_at("foo bar\nfoofoo\nfoo", 0), Some((15, 18)));
     }
 
@@ -211,8 +188,7 @@ mod tests {
 
     #[test]
     fn pattern_list_first_pattern_wins_not_earliest() {
-        // Pattern A matches only late, pattern B matches early: A is still
-        // consulted first and its match is returned.
+        // First pattern wins even if a later pattern would match earlier.
         let a = Arc::new(RegexEngineImpl::new("late", false).unwrap()) as SharedEngine;
         let b = Arc::new(RegexEngineImpl::new("early", false).unwrap()) as SharedEngine;
         let list = PatternList::new(vec![a, b]);

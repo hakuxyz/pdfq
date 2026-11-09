@@ -1,10 +1,4 @@
-//! Command line parsing and run configuration.
-//!
-//! Flag surface follows pdfgrep (which in turn follows GNU grep). Two rules
-//! matter for compatibility:
-//!   * `-h` is `--no-filename`, help is `--help` only (no `-h` help).
-//!   * with `-e`/`-f` present, positionals are all files; otherwise the first
-//!     positional is the pattern.
+//! CLI parsing. `-h` is no-filename; with `-e`/`-f` all positionals are files.
 
 use std::path::Path;
 
@@ -44,8 +38,7 @@ pub enum ColorWhen {
     Auto,
 }
 
-/// Pre-escaped SGR sequences, or empty to disable. Built once so the hot
-/// output loop does no formatting.
+/// Pre-escaped SGR sequences, empty = disabled.
 #[derive(Debug, Clone, Default)]
 pub struct ColorScheme {
     pub filename: String,
@@ -217,7 +210,7 @@ pub fn build_cli() -> Command {
                 .long("max-count")
                 .value_name("NUM")
                 .value_parser(parse_max_count)
-                .help("Stop reading after NUM matching pages"),
+                .help("Stop reading after NUM matching lines (per file)"),
         )
         .arg(
             Arg::new("debug")
@@ -332,8 +325,7 @@ pub fn build_cli() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Print only names of files without matches"),
         )
-        // One catch-all positional: with -e/-f every value is a file,
-        // otherwise the first is the pattern. Split in build_config().
+        // Catch-all positional: split into pattern vs files in build_config().
         .arg(
             Arg::new("args")
                 .value_name("PATTERN|FILE")
@@ -362,9 +354,7 @@ pub fn eprint(msg: &str) {
     eprintln!("pdfq: {msg}");
 }
 
-/// Build the effective configuration from parsed arguments.
-///
-/// `m` is the clap matches object. Exits with code 2 on usage/config errors.
+/// Build Config from clap matches; exits 2 on usage/config errors.
 pub fn build_config(m: &clap::ArgMatches) -> Config {
     if m.get_flag("unac") {
         eprint("--unac support is not available in this build");
@@ -375,13 +365,12 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
         std::process::exit(EXIT_ERROR);
     }
 
-    // ---- patterns vs files --------------------------------------------
+    // pattern vs file positionals
     let explicit_e: Vec<String> = multi_values(m, "regexp");
     let explicit_f: Vec<String> = multi_values(m, "file");
     let has_explicit_patterns = !explicit_e.is_empty() || !explicit_f.is_empty();
 
-    // With explicit -e/-f patterns every positional is a file; otherwise the
-    // first positional is the pattern and the rest are files.
+    // -e/-f: all positionals are files; else first is pattern, rest files.
     let positionals: Vec<String> = multi_values(m, "args");
     let (pattern_pos, mut files): (Option<String>, Vec<String>) = if has_explicit_patterns {
         (None, positionals)
@@ -398,8 +387,7 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
         Recursion::None
     };
 
-    // Argument-count check mirrors pdfgrep: pattern (unless -e/-f) and a
-    // target (unless -r) are required.
+    // Need a pattern (unless -e/-f) and a target (unless -r), like pdfgrep.
     let n_positional = pattern_pos.is_some() as usize + files.len();
     let required = if has_explicit_patterns { 0 } else { 1 }
         + if recursion == Recursion::None { 1 } else { 0 };
@@ -411,9 +399,7 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
     for pf in &explicit_f {
         match std::fs::read_to_string(pf) {
             Ok(content) => {
-                // getline semantics: an empty file yields zero patterns (which
-                // then matches nothing); otherwise split on \n and drop the
-                // artifact from a trailing \n.
+                // getline: empty file = no patterns; split on \n, drop trailing artifact.
                 if content.is_empty() {
                     continue;
                 }
@@ -431,17 +417,17 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
     }
 
     if !has_explicit_patterns {
-        // first positional is the pattern
+        // first positional = pattern, rest = files
         patterns.push(pattern_pos.clone().unwrap());
     } else if let Some(p) = pattern_pos {
         files.push(p);
     }
 
-    // ---- engine --------------------------------------------------------
+    // build regex engine
     let ignore_case = m.get_flag("ignore-case");
     let engine = build_engine(&patterns, ignore_case, m.get_flag("fixed-strings"), m.get_flag("perl-regexp"));
 
-    // ---- output config -------------------------------------------------
+    // output settings
     let mut out = OutConf::default();
 
     let color_when = match m.get_one::<String>("color").map(|s| s.as_str()) {
@@ -515,7 +501,7 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
         out.context_after = 0;
     }
 
-    // ---- filename display default --------------------------------------
+    // default filename display
     if !explicit_filename {
         out.filename = !(files.len() == 1 && !Path::new(&files[0]).is_dir());
     }
@@ -631,8 +617,7 @@ fn parse_ctx_num(s: &str) -> Result<i32, String> {
     }
 }
 
-/// Parse GREP_COLORS the way pdfgrep does: `name=value` pairs separated by
-/// `:`. Only mt/ms/mc, fn, ln and se are honored.
+/// Parse GREP_COLORS like pdfgrep (`name=value` pairs, `:`-separated).
 fn read_grep_colors(colors: &mut ColorScheme) {
     let Ok(val) = std::env::var("GREP_COLORS") else {
         return;

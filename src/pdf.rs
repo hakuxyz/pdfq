@@ -1,15 +1,9 @@
-//! PDF document access: load, decrypt, per-page text, page labels.
-//!
-//! Text extraction goes through pdf-extract (pure Rust, built on lopdf).
-//! pdf-extract emits a leading "\n\n" per page because its first-character
-//! logic treats y=0 as the previous baseline; poppler does not, and pdfgrep's
-//! `^` anchor assumes the page starts at the first real character. We strip
-//! that prefix and trailing whitespace to match pdfgrep/poppler.
+//! PDF open/decrypt/extract via pdf-extract; strips its leading newlines to match poppler.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
-use lopdf::Document;
+use lopdf::{Document, LoadOptions};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PdfError {
@@ -27,8 +21,7 @@ pub struct PageText {
 
 pub struct LoadedDoc {
     pages: Vec<PageText>,
-    /// 1-based page numbers whose text extraction failed (pdfgrep reports
-    /// these as "Could not search in page ..." and skips the page).
+    /// 1-based pages that failed extraction (reported, then skipped).
     failed_pages: Vec<u32>,
 }
 
@@ -63,35 +56,45 @@ impl LoadedDoc {
     }
 }
 
-/// Open `bytes` as a PDF, trying each password in turn. An unencrypted
-/// document ignores the password list.
-pub fn load(bytes: &[u8], path: &str, passwords: &[String]) -> Result<LoadedDoc, PdfError> {
-    let mut doc = match Document::load_mem(bytes) {
-        Ok(d) => d,
-        Err(e) => {
-            return Err(PdfError::Open {
-                path: path.to_string(),
-                reason: e.to_string(),
-            })
-        }
+/// Open and decrypt with the first working password; password is required at load time (`LoadOptions::with_password`).
+pub fn open(bytes: &[u8], path: &str, passwords: &[String]) -> Result<Document, PdfError> {
+    let attempts: Vec<&str> = if passwords.is_empty() {
+        vec![""]
+    } else {
+        passwords.iter().map(String::as_str).collect()
     };
 
-    if doc.is_encrypted() {
-        let mut unlocked = false;
-        for pw in passwords {
-            if doc.decrypt(pw).is_ok() {
-                unlocked = true;
-                break;
+    let mut saw_password_error = false;
+    for pw in attempts {
+        match Document::load_mem_with_options(bytes, LoadOptions::with_password(pw)) {
+            Ok(doc) => return Ok(doc),
+            Err(lopdf::Error::InvalidPassword) => {
+                saw_password_error = true;
             }
-        }
-        if !unlocked {
-            return Err(PdfError::Encrypted {
-                path: path.to_string(),
-            });
+            Err(e) => {
+                return Err(PdfError::Open {
+                    path: path.to_string(),
+                    reason: e.to_string(),
+                });
+            }
         }
     }
 
-    let labels = page_labels(&doc);
+    if saw_password_error {
+        Err(PdfError::Encrypted {
+            path: path.to_string(),
+        })
+    } else {
+        Err(PdfError::Open {
+            path: path.to_string(),
+            reason: "could not load PDF".to_string(),
+        })
+    }
+}
+
+/// Extract searchable text for every page of an already-opened document.
+pub fn extract(doc: &Document) -> LoadedDoc {
+    let labels = page_labels(doc);
     let page_ids: Vec<u32> = {
         let map = doc.get_pages();
         let mut ids: Vec<u32> = map.keys().copied().collect();
@@ -102,7 +105,7 @@ pub fn load(bytes: &[u8], path: &str, passwords: &[String]) -> Result<LoadedDoc,
     let mut pages = Vec::with_capacity(page_ids.len());
     let mut failed_pages = Vec::new();
     for (i, &pid) in page_ids.iter().enumerate() {
-        let text = match extract_page(&doc, pid) {
+        let text = match extract_page(doc, pid) {
             Some(t) => t,
             None => {
                 failed_pages.push((i + 1) as u32);
@@ -118,14 +121,13 @@ pub fn load(bytes: &[u8], path: &str, passwords: &[String]) -> Result<LoadedDoc,
         });
     }
 
-    Ok(LoadedDoc {
+    LoadedDoc {
         pages,
         failed_pages,
-    })
+    }
 }
 
-/// Extract one page. pdf-extract can panic on malformed content streams
-/// (unwrap on missing MediaBox etc.); a corrupt page must not kill the batch.
+/// Extract one page; panics from pdf-extract are caught (corrupt page -> None).
 fn extract_page(doc: &Document, page_num: u32) -> Option<String> {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut s = String::new();
@@ -142,8 +144,7 @@ fn extract_page(doc: &Document, page_num: u32) -> Option<String> {
     }
 }
 
-/// Drop pdf-extract's synthetic leading newlines and pdfgrep's trailing
-/// whitespace. Interior blank lines are content and stay.
+/// Strip pdf-extract's leading newlines and trailing whitespace.
 fn normalize_page_text(raw: &str) -> String {
     let start = raw
         .find(|c: char| c != '\n' && c != '\r')
@@ -152,9 +153,7 @@ fn normalize_page_text(raw: &str) -> String {
     trimmed_end.to_string()
 }
 
-/// Compute `/PageLabels` if present. Returns labels indexed by 0-based page
-/// position. Pages before the first Nums entry fall back to their decimal
-/// number, as poppler does.
+/// Page labels from `/PageLabels`, else decimal numbers (like poppler).
 fn page_labels(doc: &Document) -> Option<Vec<String>> {
     let root_id = doc.trailer.get(b"Root").ok()?.as_reference().ok()?;
     let catalog = doc.get_dictionary(root_id).ok()?;
@@ -333,5 +332,43 @@ mod tests {
         assert_eq!(to_letters(26), "Z");
         assert_eq!(to_letters(27), "AA");
         assert_eq!(to_letters(28), "AB");
+    }
+
+    fn fixture(name: &str) -> Vec<u8> {
+        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/").to_string() + name)
+            .expect("fixture")
+    }
+
+    #[test]
+    fn open_encrypted_with_password_extracts_text() {
+        let bytes = fixture("t_enc.pdf");
+        let doc = open(&bytes, "t_enc", &["secret".into()]).expect("open");
+        assert!(doc.was_encrypted());
+        let extracted = extract(&doc);
+        assert_eq!(extracted.len(), 1);
+        assert!(extracted.page(0).unwrap().text.contains("foo bar"));
+    }
+
+    #[test]
+    fn open_encrypted_wrong_password_fails() {
+        let bytes = fixture("t_enc.pdf");
+        let err = open(&bytes, "t_enc", &["wrong".into()]).unwrap_err();
+        assert!(matches!(err, PdfError::Encrypted { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn open_encrypted_no_password_fails() {
+        let bytes = fixture("t_enc.pdf");
+        let err = open(&bytes, "t_enc", &["".into()]).unwrap_err();
+        assert!(matches!(err, PdfError::Encrypted { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn open_unencrypted_ignores_password_list() {
+        let bytes = fixture("t.pdf");
+        let doc = open(&bytes, "t", &["whatever".into()]).expect("open");
+        assert!(!doc.was_encrypted());
+        let extracted = extract(&doc);
+        assert!(extracted.page(0).unwrap().text.contains("foo bar"));
     }
 }
