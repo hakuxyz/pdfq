@@ -95,9 +95,10 @@ impl Walker {
         // Cycle protection only matters when following symlinks (-R).
         if self.recursion == Recursion::FollowSymlinks
             && let Ok(md) = fs::metadata(dir)
-                && !visited.insert((md.dev(), md.ino())) {
-                    return;
-                }
+            && !visited.insert((md.dev(), md.ino()))
+        {
+            return;
+        }
 
         let rd = match fs::read_dir(dir) {
             Ok(rd) => rd,

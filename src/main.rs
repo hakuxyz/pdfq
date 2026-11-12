@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rayon::prelude::*;
 
 use pdfq::cache;
-use pdfq::cli::{self, Config, Recursion, EXIT_ERROR, EXIT_NO_MATCH, EXIT_OK};
+use pdfq::cli::{self, Config, EXIT_ERROR, EXIT_NO_MATCH, EXIT_OK, Recursion};
 use pdfq::pdf::{self, PdfError, SharedDoc};
 use pdfq::search::{self, FileOutcome};
 use pdfq::walk::{WalkError, Walker};
@@ -43,8 +43,7 @@ fn main() {
     let mut fatal = false;
     for e in &walk_errors {
         cli::eprint(&format!("{}: {}", e.path, e.reason));
-        let top_level = args.iter().any(|a| a == &e.path)
-            || e.reason.starts_with("is a directory");
+        let top_level = args.iter().any(|a| a == &e.path) || e.reason.starts_with("is a directory");
         if top_level {
             fatal = true;
         }
@@ -132,9 +131,7 @@ fn process_file(cfg: &Config, path: &str) -> Processed {
     // Open+decrypt first so cache hits cannot bypass the password check.
     let opened = match pdf::open(&bytes, path, &cfg.passwords) {
         Ok(d) => d,
-        Err(PdfError::Open { path, reason: _ }) => {
-            return fail(format!("Could not open {path}"))
-        }
+        Err(PdfError::Open { path, reason: _ }) => return fail(format!("Could not open {path}")),
         Err(PdfError::Encrypted { path }) => return fail(format!("Could not open {path}")),
     };
     // was_encrypted stays true after a password load clears the Encrypt trailer entry.

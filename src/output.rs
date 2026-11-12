@@ -44,11 +44,7 @@ impl Writer {
     const COLOR_OFF: &'static str = "\x1b[m\x1b[K";
 
     fn color_off(&self) -> &'static str {
-        if self.out.color {
-            Self::COLOR_OFF
-        } else {
-            ""
-        }
+        if self.out.color { Self::COLOR_OFF } else { "" }
     }
 
     /// `filename<sep>[pagenum<sep>]`; sep is `:`, `-` (context), or NUL (-Z).
@@ -124,10 +120,7 @@ impl Writer {
         let last = matches[matches.len() - 1];
 
         // Line start: byte after the previous newline (or 0).
-        let a = text[..first.start]
-            .rfind('\n')
-            .map(|i| i + 1)
-            .unwrap_or(0);
+        let a = text[..first.start].rfind('\n').map(|i| i + 1).unwrap_or(0);
         // Line end: the newline terminating the last match's line.
         let b = text[last.end..]
             .find('\n')
@@ -198,13 +191,7 @@ impl Writer {
         self.ctx_after_lines(ctx, m, text, self.out.context_after);
     }
 
-    fn ctx_before_lines(
-        &mut self,
-        ctx: PrefixCtx<'_>,
-        m: MatchSpan,
-        text: &str,
-        mut lines: i32,
-    ) {
+    fn ctx_before_lines(&mut self, ctx: PrefixCtx<'_>, m: MatchSpan, text: &str, mut lines: i32) {
         let Some(line_begin) = text[..m.start].rfind('\n') else {
             return; // match is on the first line of the page
         };
@@ -424,7 +411,10 @@ mod tests {
         w.line_matches(
             ctx(),
             text,
-            &[MatchSpan { start: 0, end: 3 }, MatchSpan { start: 3, end: 6 }],
+            &[
+                MatchSpan { start: 0, end: 3 },
+                MatchSpan { start: 3, end: 6 },
+            ],
         );
         assert_eq!(w.take(), "foofoo\n");
     }

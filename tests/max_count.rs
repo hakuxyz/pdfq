@@ -8,14 +8,13 @@ fn pdfq() -> Command {
 }
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
 }
 
 fn run(args: &[&str]) -> (String, String, Option<i32>) {
-    let out = pdfq()
-        .args(args)
-        .output()
-        .expect("run pdfq");
+    let out = pdfq().args(args).output().expect("run pdfq");
     (
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),

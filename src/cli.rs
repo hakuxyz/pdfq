@@ -4,7 +4,9 @@ use std::path::Path;
 
 use clap::{Arg, ArgAction, Command};
 
-use crate::engine::{FixedEngine, NeverEngine, PcreEngine, PatternList, RegexEngineImpl, SharedEngine};
+use crate::engine::{
+    FixedEngine, NeverEngine, PatternList, PcreEngine, RegexEngineImpl, SharedEngine,
+};
 use crate::pagerange::PageRange;
 
 pub const EXIT_OK: i32 = 0;
@@ -344,9 +346,7 @@ fn flag(short: char, long: &'static str, help: &'static str) -> Arg {
 
 /// Print pdfgrep's short usage to stdout and exit 2.
 pub fn print_usage_and_exit() -> ! {
-    println!(
-        "Usage: pdfq [OPTION]... PATTERN FILE...\n\nSee 'pdfq --help' for more information"
-    );
+    println!("Usage: pdfq [OPTION]... PATTERN FILE...\n\nSee 'pdfq --help' for more information");
     std::process::exit(EXIT_ERROR);
 }
 
@@ -425,7 +425,12 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
 
     // build regex engine
     let ignore_case = m.get_flag("ignore-case");
-    let engine = build_engine(&patterns, ignore_case, m.get_flag("fixed-strings"), m.get_flag("perl-regexp"));
+    let engine = build_engine(
+        &patterns,
+        ignore_case,
+        m.get_flag("fixed-strings"),
+        m.get_flag("perl-regexp"),
+    );
 
     // output settings
     let mut out = OutConf::default();
@@ -471,7 +476,9 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
         out.pagenum = true;
     }
     if count && out.pagenum {
-        eprint("warning: --count and --page-number can't be used together. Ignoring --page-number.");
+        eprint(
+            "warning: --count and --page-number can't be used together. Ignoring --page-number.",
+        );
         out.pagenum = false;
     }
 
@@ -495,7 +502,9 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
         out.context_mode = true;
     }
     if out.only_matching && out.context_mode {
-        eprint("warning: --only-matching and context options can't be used together. Ignoring context option.");
+        eprint(
+            "warning: --only-matching and context options can't be used together. Ignoring context option.",
+        );
         out.context_mode = false;
         out.context_before = 0;
         out.context_after = 0;
@@ -561,12 +570,7 @@ pub fn build_config(m: &clap::ArgMatches) -> Config {
     }
 }
 
-fn build_engine(
-    patterns: &[String],
-    ignore_case: bool,
-    fixed: bool,
-    perl: bool,
-) -> SharedEngine {
+fn build_engine(patterns: &[String], ignore_case: bool, fixed: bool, perl: bool) -> SharedEngine {
     let mut engines: Vec<SharedEngine> = Vec::with_capacity(patterns.len());
     for p in patterns {
         let built: Result<SharedEngine, String> = if perl {
@@ -574,8 +578,7 @@ fn build_engine(
         } else if fixed {
             FixedEngine::new(p, ignore_case).map(|e| -> SharedEngine { std::sync::Arc::new(e) })
         } else {
-            RegexEngineImpl::new(p, ignore_case)
-                .map(|e| -> SharedEngine { std::sync::Arc::new(e) })
+            RegexEngineImpl::new(p, ignore_case).map(|e| -> SharedEngine { std::sync::Arc::new(e) })
         };
         match built {
             Ok(e) => engines.push(e),

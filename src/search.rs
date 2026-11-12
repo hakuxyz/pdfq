@@ -86,10 +86,7 @@ pub fn search_document(
             }
             break;
         }
-        if page_count > 0
-            && cfg.pagecount
-            && cfg.only_filenames == OnlyFilenames::No
-            && !cfg.quiet
+        if page_count > 0 && cfg.pagecount && cfg.only_filenames == OnlyFilenames::No && !cfg.quiet
         {
             writer.prefix(ctx, false);
             writer.raw_line(&page_count.to_string());
@@ -100,10 +97,7 @@ pub fn search_document(
         }
     }
 
-    if cfg.only_filenames == OnlyFilenames::WithoutMatch
-        && state.total == 0
-        && !cfg.quiet
-    {
+    if cfg.only_filenames == OnlyFilenames::WithoutMatch && state.total == 0 && !cfg.quiet {
         writer.only_filename(filename);
     }
 
@@ -335,7 +329,12 @@ mod tests {
     fn max_count_counts_matches_not_lines() {
         // One line with three matches consumes the whole budget of 3.
         let d = doc(&["foo foo foo", "foo bar", "baz foo"]);
-        let out = search_document(&cfg("foo", 3, false, true), &d, "x.pdf", &cfg("foo", 3, false, true).engine);
+        let out = search_document(
+            &cfg("foo", 3, false, true),
+            &d,
+            "x.pdf",
+            &cfg("foo", 3, false, true).engine,
+        );
         assert_eq!(out.stdout, "1:foo foo foo\n");
         assert_eq!(out.matches, 3);
     }

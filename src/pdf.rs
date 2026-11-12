@@ -1,6 +1,6 @@
 //! PDF open/decrypt/extract via pdf-extract; strips its leading newlines to match poppler.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
 use lopdf::{Document, LoadOptions};
@@ -251,9 +251,13 @@ impl LabelRule {
         match &self.style {
             None => self.prefix.clone(),
             Some(LabelStyle::Decimal) => format!("{}{}", self.prefix, n),
-            Some(LabelStyle::UpperRoman) => format!("{}{}", self.prefix, to_roman(n).to_uppercase()),
+            Some(LabelStyle::UpperRoman) => {
+                format!("{}{}", self.prefix, to_roman(n).to_uppercase())
+            }
             Some(LabelStyle::LowerRoman) => format!("{}{}", self.prefix, to_roman(n)),
-            Some(LabelStyle::UpperLetters) => format!("{}{}", self.prefix, to_letters(n).to_uppercase()),
+            Some(LabelStyle::UpperLetters) => {
+                format!("{}{}", self.prefix, to_letters(n).to_uppercase())
+            }
             Some(LabelStyle::LowerLetters) => format!("{}{}", self.prefix, to_letters(n)),
         }
     }

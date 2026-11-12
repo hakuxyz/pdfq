@@ -8,7 +8,9 @@ fn pdfq() -> Command {
 }
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
 }
 
 #[test]
@@ -20,7 +22,15 @@ fn cache_does_not_bypass_password() {
     // Correct password + --cache: match, but nothing is cached for encrypted docs.
     let ok = pdfq()
         .env("PDFQ_CACHE_DIR", &cache)
-        .args(["--cache", "--password", "secret", "-n", "--color=never", "-e", "foo"])
+        .args([
+            "--cache",
+            "--password",
+            "secret",
+            "-n",
+            "--color=never",
+            "-e",
+            "foo",
+        ])
         .arg(&enc)
         .output()
         .expect("run");
@@ -44,7 +54,15 @@ fn cache_does_not_bypass_password() {
     // Wrong password + --cache: still fails (open happens before any cache read).
     let bad = pdfq()
         .env("PDFQ_CACHE_DIR", &cache)
-        .args(["--cache", "--password", "wrong", "-n", "--color=never", "-e", "foo"])
+        .args([
+            "--cache",
+            "--password",
+            "wrong",
+            "-n",
+            "--color=never",
+            "-e",
+            "foo",
+        ])
         .arg(&enc)
         .output()
         .expect("run");

@@ -22,9 +22,10 @@ fn cache_dir() -> Option<PathBuf> {
         return Some(PathBuf::from(d));
     }
     if let Ok(x) = std::env::var("XDG_CACHE_HOME")
-        && !x.is_empty() {
-            return Some(PathBuf::from(x).join("pdfq"));
-        }
+        && !x.is_empty()
+    {
+        return Some(PathBuf::from(x).join("pdfq"));
+    }
     std::env::var("HOME")
         .ok()
         .filter(|h| !h.is_empty())

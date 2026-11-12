@@ -62,9 +62,7 @@ fn parse_interval(s: &str) -> Result<Interval, PageRangeError> {
 
     let parse_num = |v: &str| -> Result<u32, PageRangeError> {
         if v.is_empty() || !v.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(err(
-                "Expected a single page or a range PAGE1-PAGE2.",
-            ));
+            return Err(err("Expected a single page or a range PAGE1-PAGE2."));
         }
         v.parse::<u32>()
             .map_err(|_| err("Expected a single page or a range PAGE1-PAGE2."))
